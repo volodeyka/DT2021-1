@@ -1,45 +1,109 @@
+\import Algebra.Meta
+\import Function (o)
+\import Meta
+\import Paths.Meta
 \import Utils
+\import hw01 (gcd)
+\import lect05 (funExt)
 \import lect06
 \open Nat(+)
 
 -- 1. Определите функцию swap несколькими способами.
 
 -- При помощи \cowith и доступа к полям.
-\func swap {A B : \Type} (p : Pair A B) : Pair B A => {?}
+\func swap {A B : \Type} (p : Pair A B) : Pair B A \cowith
+  | fst_ => p.snd_
+  | snd_ => p.fst_
 
 -- При помощи \new и паттерн матчинга.
-\func swap' {A B : \Type} (p : Pair A B) : Pair B A => {?}
+\func swap' {A B : \Type} (p : Pair A B) : Pair B A
+  | (a,b) => \new Pair { | fst_ => b | snd_ => a}
+
 
 -- При помощи \new и доступа к полям.
-\func swap'' {A B : \Type} (p : Pair A B) : Pair B A => {?}
+\func swap'' {A B : \Type} (p : Pair A B) : Pair B A =>
+  \new Pair { | fst_ => p.snd_ | snd_ => p.fst_}
 
 -- 2. Докажите, что swap (swap p) = p.
 
-\func swap-involutive {A B : \Type} (p : Pair A B) : swap (swap p) = p => {?}
+\func swap-involutive {A B : \Type} (p : Pair A B) : swap (swap p) = p => idp
+
 
 -- 3. Докажите, что тип PosNat 0 пустой, а тип PosNat 1 нет.
 
-\func zero-isNotPos (p : PosNat 0) : Empty => {?}
+\func zero-isNotPos (p : PosNat 0) : Empty => \case p.p
 
-\func one-isPos : PosNat 1 => {?}
+\func one-isPos : PosNat 1 \cowith
+  | p => ()
 
 -- 4. Определите \record, состоящий из пар взаимно простых натуральных чисел.
 --    Определите тип, состоящий из натуральных чисел, взаимно простых с 60.
+
+\record primes
+  | n : Nat
+  | m : Nat
+  | prime : gcd n m = 1
+
+\func primes60 => primes {| n => 60}
 
 -- 5. Закончите определение класса монад. Этот класс должен содержать все монадные законы и реализовывать все поля из класса функторов.
 
 \class Monad \extends Functor
   | return {A : \Set} : A -> F A
   | \infixl 1 >>= {A B : \Set} : F A -> (A -> F B) -> F B
+  | left_id {A B : \Set} {a : A} {h : A -> F B} : (return a >>= h) = h a
+  | right_id {A : \Set} {x : F A} : (x >>= return) = x
+  | >>=-assoc {A B C : \Set} {m : F A} {f : A -> F B} {g : B -> F C} :
+    ((m >>= f) >>= g) = (m >>= (\lam x => f x >>= g))
+  | fmap {A B : \Set} (f : A -> B) => __ >>= (\lam x => return (f x))
+  | fmap-id {A : \Set} (m : F A) => idp *> right_id
+  | fmap-comp {A B C : \Set} (f : A -> B) (g : B -> C) (m : F A) =>
+    unfold fmap (rewrite >>=-assoc (cong (funExt _ (\lam _ => idp *> (sym left_id)))))
 
 -- 6. Определите \instance Monad для Maybe.
 
-\instance MaybeMonad : Monad Maybe => {?}
+\instance MaybeMonad : Monad Maybe \cowith
+  | return => just
+  | >>= m f => maybe nothing f m
+  | left_id => idp
+  | right_id {A : \Set} {x : Maybe A} => \case \elim x \with {
+    | nothing => idp
+    | just a => idp
+  }
+  | >>=-assoc {A B C : \Set} {m : Maybe A} {f : A -> Maybe B} {g : B -> Maybe C} => \case \elim m \with {
+    | nothing => idp
+    | just a => idp
+  }
 
 -- 7. Определите \instance Monad для State и State'.
 
 \record State (S A : \Type)
   | state : S -> \Sigma S A
 
+\instance StateMonad (S : \Set) : Monad (State S) \cowith
+  | return {A : \Set} (a : A) => \new State {| state => (__, a)}
+  | >>= {A B : \Set} (s : State S A) (f : A -> State S B) =>
+    \new State {| state => \lam st => state {f (s.state st).2} (s.state st).1 }
+  | left_id => idp
+  | right_id => idp
+  | >>=-assoc => idp
+
 \data State' (S A : \Type)
   | state' (S -> \Sigma S A)
+
+\instance State'Monad (S : \Set) : Monad (State' S) \cowith
+  | return {A : \Set} (a : A) => state' (__, a)
+  | >>= {A B : \Set} (s : State' S A) (f : A -> State' S B) : State' S B \elim s {
+    | state' sst => state' (\lam st => \case sst st \with {
+      | (s,a) => \case f a \with {
+        | state' x => x s
+      }
+    })
+  }
+  | left_id {A B : \Set} {a : A} {h : A -> State' S B} => cases (h a) idp
+  | right_id {A : \Set} {x : State' S A} => cases x idp
+  | >>=-assoc {A B C : \Set} {m : State' S A} {f : A -> State' S B} {g : B -> State' S C} =>
+    cases m \with {
+      | state' _x => cong (funExt _ (\lam x => cases (f (_x x).2) idp))
+    }
+
