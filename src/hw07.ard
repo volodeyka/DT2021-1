@@ -1,10 +1,18 @@
+\import Data.List (!!)
+\import Function.Meta
+\import Meta
+\import Paths.Meta
 \import Utils
+\import lect04 (head)
+\import lect05 (funExt)
 \import lect07
 \open Nat(+,*)
 
 -- 1. Определите предикат принадлежности элемента списку.
 
-\data In {A : \Type} (a : A) (xs : List A)
+\data In {A : \Type} (a : A) (xs : List A) \with
+  | a, :: b _ => inhead (a = b)
+  | a, :: _ xs => intail (In a xs)
 
 -- Optional:
 -- 2. Докажите эквивалентность четырех различных определений LessOrEq: lessOrEq, lessOrEq', LessOrEq и LessOrEq'.
@@ -13,47 +21,137 @@
 --    То есть ReflTransClosure R -- это минимальное рефлексивное и транзитивное отношение, содержащее R.
 
 \data ReflTransClosure {A : \Type} (R : A -> A -> \Type) (x y : A)
+  | RR (R x y)
+  | Rr (x = y)
+  | Pt (z : A) (R x z) (R z y)
 
 -- 4. Докажите, что если R уже рекфлексивно и транзитивно, то ReflTransClosure R эквивалентно R.
 
 \func ReflTransClosure-lem {A : \Type} (R : A -> A -> \Type) (refl : \Pi (x : A) -> R x x) (trans : \Pi (x y z : A) -> R x y -> R y z -> R x z)
   : \Pi (x y : A) -> R x y <-> ReflTransClosure R x y
-  => {?}
+  => \lam x y => (RR,
+    \lam Rxy => \case Rxy \with {
+      | RR r => r
+      | Rr p => rewrite p (refl _)
+      | Pt z r r1 => trans _ _ _ r r1
+    })
 
 -- 5. Определите предикат Sublist xs ys на списках, означающий "список xs является подсписком ys".
 
+\data Sublist {A : \Type} (xs ys : List A) \elim xs, ys
+  | nil, ys => nil-sub
+  | :: x xs, :: y ys => cons-sub (x = y) (Sublist xs ys)
+  | xs, :: _ ys => tail-sub (Sublist xs ys)
+
 -- 6. Докажите, что Sublist (filter p xs) xs для любых p и xs.
+
+\func Sublist-filter {A : \Type} (xs : List A) (p : A -> Bool) : Sublist (filter p xs) xs \elim xs
+  | nil => nil-sub
+  | :: a xs => mcases \with {
+    | true => cons-sub idp (Sublist-filter xs p)
+    | false => tail-sub (Sublist-filter xs p)
+  }
 
 -- 7. Определите filter через if, а не через \case.
 --     Докажите для этой версии filter лемму filter-lem.
 
-\func filter' {A : \Type} (p : A -> Bool) (xs : List A) : List A => {?}
+\func filter' {A : \Type} (p : A -> Bool) (xs : List A) : List A \elim xs
+  | nil => nil
+  | :: a xs => if (p a) (a :: filter' p xs) (filter' p xs)
 
-\func filter-lem {A : \Type} (p : A -> Bool) (xs : List A) : LessOrEq (length (filter' p xs)) (length xs) => {?}
+\func filter-lem {A : \Type} (p : A -> Bool) (xs : List A) : LessOrEq (length (filter' p xs)) (length xs) \elim xs
+  | nil => z<=_
+  | :: a xs => cases (p a) \with {
+    | true => s<=s (filter-lem p xs)
+    | false => <=-step-lem (filter-lem p xs)
+  }
 
 -- 8. Закончите определение функции \func BoolFuncLem (f : Bool -> Bool) (x : Bool) : f (f (f x)) = f x из лекции.
+
+\func BoolFuncLem (f : Bool -> Bool) (x : Bool) : f (f (f x)) = f x
+  => \case f true \as t, idp : f true = t, f false \as y, idp : f false = y, \elim x \with {
+    | true, p, true, q, true => repeat {2} (rewrite p) p
+    | true, p, true, q, false => rewrite (q,p) p
+    | true, p, false, q, true => rewrite (p,p) p
+    | true, p, false, q, false => rewrite (q,q) q
+    | false, p, true, q, true => rewrite (p,q) p
+    | false, p, true, q, false => rewrite (q,p) q
+    | false, p, false, q, true => rewrite (p,q) q
+    | false, p, false, q, false => rewrite (q,q) q
+  }
 
 -- 9. Докажите, что предикат isEven разрешим.
 
 \func isEven (n : Nat) => \Sigma (k : Nat) (n = 2 * k)
 
-\func isEven-dec : DecPred isEven => {?}
+\func isEven-dec : DecPred isEven => \lam n => aux n \where
+  \func aux (n : Nat) : Decide (isEven n)
+    | 0 => yes (0, idp)
+    | 1 => no (\lam x => \case x \with {
+      (k, p) => cases (k arg addPath) \with {
+        | 0, p1 => \case (rewrite p1 p)
+        | suc x1, p1 => \case (rewrite p1 p)
+      }
+    })
+    | suc (suc n) => \case (aux n) \with {
+      | yes (k, p) => yes (k + 1, rewrite p idp)
+      | no n1 => no (\lam x => \case x \with {
+        (k, p) => cases (k,p) \with {
+          | suc k1, p1 => n1 (k1, pmap pred (pmap pred p1))
+        }
+      })
+    }
+
 
 -- 10. Докажите, что если равенство элементов A разрешимо, то и равенство элементов List A тоже разрешимо.
 
+\func head {A : \Type} (a : A) (l : List A)  : A \elim l
+  | nil => a
+  | :: a1 l => a1
+
+\func tail {A : \Type} (l : List A)  : List A \elim l
+  | nil => nil
+  | :: a1 l => l
+
 \instance ListEq {A : \Type} (dec : Eq A) : Eq (List A)
-  | decideEq => {?}
+  | decideEq (x y : List A) : Decide (x = y) \with {
+    | nil, nil => yes idp
+    | nil, :: a y => no (\case __)
+    | :: a x, nil => no (\case __)
+    | :: a x, :: a1 y => \case decideEq x y, dec.decideEq a a1 \with {
+      | yes a2, yes a3 => yes (rewrite (a2, a3) idp)
+      | yes a2, no n => no (\lam x => n (pmap (head a) x))
+      | no n, _ => no (\lam x => n (pmap tail x))
+    }
+  }
 
 -- 11. Докажите, что функции FromBoolToDec и FromDecToBool взаимно обратны.
 
-\func bdb {A : \Type} (p : A -> Bool) : FromDecToBool (FromBoolToDec p) = p => {?}
+\func bdb {A : \Type} (p : A -> Bool) : FromDecToBool (FromBoolToDec p) = p =>
+  funExt _ (\lam x =>
+      unfold (FromDecToBool, FromBoolToDec)
+      (mcases \with {
+        | yes a1 => cases (p x, a1) \with {
+          | true, a2 => idp
+        }
+        | no n => cases (p x, n) \with {
+          | true, n1 => absurd (n1 ())
+          | false, n1 => idp
+        }
+      } ))
 
 -- Мы не можем доказать, что FromBoolToDec (FromDecToBool P) = P, но мы можем доказать более слабое утверждение: эти предикаты логически эквивалентны.
 -- Для этого введем эквивалентность предикатов.
 
 \func dbd {A : \Type} (P : \Sigma (P : A -> \Type) (DecPred P))
   : \Pi (x : A) -> (FromBoolToDec (FromDecToBool P)).1 x <-> P.1 x
-  => {?}
+  => cases P \with {
+    | (P1,d) => unfold (FromDecToBool, FromBoolToDec)
+      (\lam x => cases (d x) \with {
+        | yes a => (\lam _ => a, \lam _ => ())
+        | no n => (\case __ \with {}, n __)
+      })
+  }
 
 -- Optional:
 -- 12. Парадокс Рассела показывает, что не существует множества всех множеств.
@@ -66,4 +164,4 @@
 -- Это легко доказать при помощи исключенного третьего, но утверждение верно и без него.
 -- Докажите этот факт.
 \func contrProp {A : \Type} (p : A -> Not A) (q : Not A -> A) : Empty
-  => {?}
+  => p (q (\lam x => p x x)) (q (\lam x => p x x))
