@@ -1,9 +1,8 @@
-\import Data.List (!!)
+\import Function
 \import Function.Meta
 \import Meta
 \import Paths.Meta
 \import Utils
-\import lect04 (head)
 \import lect05 (funExt)
 \import lect07
 \open Nat(+,*)
@@ -21,20 +20,19 @@
 --    То есть ReflTransClosure R -- это минимальное рефлексивное и транзитивное отношение, содержащее R.
 
 \data ReflTransClosure {A : \Type} (R : A -> A -> \Type) (x y : A)
-  | RR (R x y)
   | Rr (x = y)
-  | Pt (z : A) (R x z) (R z y)
+  | Pt (z : A) (R x z) (ReflTransClosure R z y)
 
 -- 4. Докажите, что если R уже рекфлексивно и транзитивно, то ReflTransClosure R эквивалентно R.
 
 \func ReflTransClosure-lem {A : \Type} (R : A -> A -> \Type) (refl : \Pi (x : A) -> R x x) (trans : \Pi (x y z : A) -> R x y -> R y z -> R x z)
   : \Pi (x y : A) -> R x y <-> ReflTransClosure R x y
-  => \lam x y => (RR,
-    \lam Rxy => \case Rxy \with {
-      | RR r => r
+  => \lam x y => (\lam rxy => Pt y rxy (Rr idp), \lam r+ => aux R refl trans x y r+) \where {
+    \func aux {A : \Type} (R : A -> A -> \Type) (refl : \Pi (x : A) -> R x x) (trans : \Pi (x y z : A) -> R x y -> R y z -> R x z) (x y : A)
+        (r+ : ReflTransClosure R x y) : R x y \elim r+
       | Rr p => rewrite p (refl _)
-      | Pt z r r1 => trans _ _ _ r r1
-    })
+      | Pt z r p0 => trans _ _ _ r (aux R refl trans _ _ p0)
+}
 
 -- 5. Определите предикат Sublist xs ys на списках, означающий "список xs является подсписком ys".
 
@@ -88,7 +86,7 @@
   \func aux (n : Nat) : Decide (isEven n)
     | 0 => yes (0, idp)
     | 1 => no (\lam x => \case x \with {
-      (k, p) => cases (k arg addPath) \with {
+      (k, p) =>      \with {
         | 0, p1 => \case (rewrite p1 p)
         | suc x1, p1 => \case (rewrite p1 p)
       }
