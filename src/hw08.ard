@@ -1,6 +1,16 @@
+\import Algebra.Meta
+\import Arith.Nat
 \import Data.Bool
 \import Data.List \hiding (headDef)
-\import Utils (<->)
+\import Data.Or
+\import Function
+\import Function.Meta
+\import Logic.Meta
+\import Meta
+\import Paths
+\import Paths.Meta
+\import Utils (&&, <->, Either, Maybe, just, maybe, nothing)
+
 \import lect08
 \import Order.LinearOrder
 \open LinearOrder
@@ -10,15 +20,125 @@
 --    * Все элементы filter p xs удовлетворяют предикату p
 --    * Любой подсписок xs с тем же свойством является подсписком filter p xs
 
+\func filter {A : \Type} (p : A -> Bool) (xs : List A) : List A \elim xs
+  | nil => nil
+  | :: x xs => \case p x \with {
+    | true => x :: filter p xs
+    | false => filter p xs
+  }
+
+\data Sublist {A : \Type} (xs ys : List A) \elim xs, ys
+  | nil, ys => nil-sub
+  | :: x xs, :: y ys => cons-sub (x = y) (Sublist xs ys)
+  | xs, :: _ ys => tail-sub (Sublist xs ys)
+
+-- 6. Докажите, что Sublist (filter p xs) xs для любых p и xs.
+
+\func Sublist-filter {A : \Type} (xs : List A) (p : A -> Bool) : Sublist (filter p xs) xs \elim xs
+  | nil => nil-sub
+  | :: a xs => mcases \with {
+    | true => cons-sub idp (Sublist-filter xs p)
+    | false => tail-sub (Sublist-filter xs p)
+  }
+
+\data all {A : \Type} (p : A -> Bool) (l : List A)  \elim l
+  | nil => all-nil
+  | :: x xs => all-cons (p x = true) (all p xs)
+
+\func p-filter {A : \Type} (l : List A) (p : A -> Bool) : all p (filter p l) \elim l
+  | nil => all-nil
+  | :: a l => cases (p a arg addPath) \with {
+    | true, pf => all-cons pf (p-filter l p)
+    | false, pf => p-filter l p
+  }
+
+\func all-sub-filter {A : \Type} (l l' : List A) (p : A -> Bool) :
+  Sublist l l' -> all p l -> Sublist l (filter p l') \elim l'
+  | nil => \lam x => \case \elim l, x \with {
+    | nil, _ => \lam x => nil-sub
+    | :: a l, ()
+  }
+  | :: a l' => cases (p a arg addPath) \with {
+    | false, p1 => \lam s => \case \elim l, s \with {
+      | nil, nil-sub => \lam _ => nil-sub
+      | :: x l, cons-sub p2 s1 => rewrite p2 (\case __ \with {
+        | all-cons p3 a1 => contradiction
+      })
+      | l, tail-sub s1 => all-sub-filter l l' p s1
+    }
+    | true, p1 => \lam s => \case \elim l, s \with {
+      | nil, nil-sub => \lam _ => nil-sub
+      | :: x l, cons-sub p2 s1 => rewrite p2 (\case __ \with {
+        | all-cons p3 a1 => cons-sub idp (all-sub-filter l l' p s1 a1)
+      })
+      | l, tail-sub s1 => \lam y => tail-sub (all-sub-filter l l' p s1 y)
+    }
+  }
+
 -- 2. Докажите, что Perm l1 l2 тогда и только тогда, когда Insertion.sort l1 = Insertion.sort l2.
+
+\func perm-sort-eq  {A : Dec} {l l' : List A} (p : Perm l l') : Insertion.sort l = Insertion.sort l' \elim l, l', p
+  | nil, nil, perm-nil => idp
+  | :: x l, :: y l', perm-cons p p1 => run {
+    rewrite p,
+    pmap (Insertion.sort.insert _),
+    perm-sort-eq p1
+  }
+  | l, l', perm-trans p1 p2 => run {
+    rewrite (perm-sort-eq p1),
+    rewriteI (perm-sort-eq p2),
+    idp
+  }
+  | :: x (:: x' l), :: y (:: y' l'), perm-swap p p1 p2 => run {
+    rewrite (p, p1, p2),
+    Insertion.sort-perm.insert-comm _ _ _
+  }
+
+\lemma sort-of-sorted {A : Dec} {l : List A} (s : Sorted l) : Insertion.sort l = l \elim l, s
+  | nil, sorted-nil => idp
+  | :: x l, sorted-cons p s => run {
+    rewrite (sort-of-sorted s),
+    aux l x p s
+  } \where {
+  \func aux  {A : Dec} (l : List A) (x : A) (p : x <= headDef x l) (s : Sorted l) : Insertion.sort.insert x l = x :: l \elim l, s
+    | nil, sorted-nil => idp
+    | :: x1 l, sorted-cons _x s => mcases \with {
+      | inl x1<x => contradiction
+      | inr x<=x1 => idp
+    }
+}
 
 -- 3. Докажите, что спецификация "результат является перестановкой входа и отсортирован" является полной для функции sort.
 
 \func completeness {A : Dec} (sort : List A -> List A) (l : List A) (p : Perm l (sort l)) (s : Sorted (sort l)) : sort l = Insertion.sort l
-  => {?}
+  => run {
+    rewriteI (sort-of-sorted s),
+    inv,
+    perm-sort-eq,
+    p
+  }
 
 -- 4. Определите факториал через хвостовую рекурсию.
 --    Докажите, что он равен обычному определению факториала.
+
+\func fact (n : Nat) : Nat
+  | 0 => 1
+  | suc n => suc n Nat.* fact n
+
+\func fact_acc => aux 1 \where {
+  \func aux (acc n : Nat) : Nat \elim n
+    | 0 => acc
+    | suc n => aux (suc n Nat.* acc) n
+}
+
+\lemma fac_acc=fac (n acc : Nat) : acc Nat.* fact n = fact_acc.aux acc n \elim n
+  | 0 => idp
+  | suc n => run {
+    rewriteI (fac_acc=fac _ _),
+    rewriteI NatSemiring.*-assoc,
+    rewrite (NatSemiring.*-comm {suc n}),
+    idp
+  }
 
 -- 5. Определите функцию, которая проверяет правильность скобочной последовательности.
 --    Докажите ее корректность.
@@ -26,12 +146,166 @@
 \data Paren | Left | Right
 
 \func isBalanced (xs : List Paren) : Bool
-  => {?}
+  => \case cnt 0 xs \with {
+    | just 0 => true
+    | _ => false
+  } \where {
+  \func cnt (n : Nat) (xs : List Paren) : Maybe Nat \elim n, xs
+    | n, nil => just n
+    | n, :: Left xs => cnt (suc n) xs
+    | 0, :: Right xs => nothing
+    | suc n, :: Right xs => cnt n xs
+}
+
+\lemma cnt-n-Left::xs {xs : List Paren} {n : Nat} : isBalanced.cnt n (Left :: xs) = isBalanced.cnt (suc n) xs =>
+  cases n idp
+
+\lemma cnt-n-nil {n : Nat} : isBalanced.cnt n nil = just n =>
+  cases n idp
+
+\lemma cnt++ {xs ys : List Paren} (m k : Nat) {n : Nat}
+  (cnt_xs : isBalanced.cnt n xs = just m)
+  (cnt_ys : isBalanced.cnt m ys = just k) : isBalanced.cnt n (xs ++ ys) = just k \elim xs
+  | nil => run {
+    rewrite cnt-n-nil at cnt_xs,
+    pmap (maybe 0 (\lam x => x)) at cnt_xs,
+    rewrite cnt_xs,
+    cnt_ys
+  }
+  | :: a xs => \case \elim a, \elim n, cnt_xs \with {
+    | Left, l, p => run {
+      rewrite cnt-n-Left::xs at p,
+      rewrite cnt-n-Left::xs,
+      cnt++ _ _ p cnt_ys
+    }
+    | Right, 0, p => \case p
+    | Right, suc n1, p => cnt++ _ _ p cnt_ys
+  }
 
 \data Balanced (xs : List Paren) \with
   | nil => nil-balanced
   | :: Left xs => cons-balanced {ys : List Paren} (Balanced ys) (xs = ys ++ Right :: nil)
   | xs => append-balanced {ys zs : List Paren} (Balanced ys) (Balanced zs) (xs = ys ++ zs)
 
+
+\func isBalanced-correct1 (xs : List Paren) (b_xs : Balanced xs) (n : Nat) : isBalanced.cnt n xs = just n \elim xs, b_xs
+  | nil, nil-balanced => cases n idp
+  | :: Left xs1, cons-balanced b_xs1 p => run {
+    rewrite (p, cnt-n-Left::xs),
+    rewrite (cnt++ (suc n) n (isBalanced-correct1 _ b_xs1 _) cnt-n-nil),
+    idp
+  }
+  | xs1, append-balanced b_xs1 b_xs2 p => run {
+    rewrite p,
+    rewrite (cnt++ n n (isBalanced-correct1 _ b_xs1 _) (isBalanced-correct1 _ b_xs2 _)),
+    idp
+  }
+
+
+\func ins {A : \Type} (i : Nat) (xs : List A) (ys : List A) : List A \elim i, xs
+  | 0, xs => ys ++ xs
+  | suc _, nil => ys
+  | suc i, :: a xs => a :: ins i xs ys
+
+\func ins_nil {A : \Type} {i : Nat} {xs : List A} : ins i nil xs = xs \elim i
+  | 0 => ++_nil
+  | suc i => idp
+
+\func ins++ {A : \Set} (i : Nat) (xs1 xs2 : List A) (ys : List A) :
+  Either
+    (ins i (xs1 ++ xs2) ys = ins i xs1 ys ++ xs2)
+    (\Sigma (j : Nat) (ins i (xs1 ++ xs2) ys = xs1 ++ ins (suc j) xs2 ys)) \elim i, xs1
+  | 0, _ => Either.inl equation
+  | suc i, nil => Either.inr (i, idp)
+  | suc i, :: a xs1 => \case (ins++ i xs1 xs2 ys) \with {
+    | Either.inl p => Either.inl $ run {
+      rewrite p,
+      idp
+    }
+    | Either.inr (j, q) =>  Either.inr $ run {
+      rewrite q,
+      (j, idp)
+    }
+  }
+
+\func ins_rcons {A : \Set} (i : Nat) (xs : List A) (x : A) (ys : List A) :
+  Either
+    (ins i (xs ++ x :: nil) ys = ins i xs ys ++ x :: nil)
+    (ins i (xs ++ x :: nil) ys = (xs ++ x :: nil) ++ ys) =>
+  \case (ins++ i xs (x :: nil) ys) \with {
+    | Either.inl a => Either.inl a
+    | Either.inr (_, b) => run { rewrite ins_nil at b, Either.inr, rewrite b, equation }
+  }
+
+\func ins_lenght_++ {A : \Type} (xs ys zs : List A) : ins (length xs) (xs ++ ys) zs = xs ++ zs ++ ys \elim xs
+  | nil => idp
+  | :: a xs => rewrite (ins_lenght_++ xs ys zs) idp
+
+\func BalancedLR : Balanced (Left :: Right :: nil) =>  cons-balanced nil-balanced idp
+
+\func Balanced_ins {xs : List Paren} {i : Nat} (bs : Balanced xs) :
+  Balanced (ins i xs (Left :: Right :: nil)) \elim xs, bs
+  | nil, nil-balanced => run { rewrite ins_nil, BalancedLR }
+  | :: Left xs, cons-balanced {ys} bs_ys xs=ysr => cases i \with {
+    | 0 => append-balanced BalancedLR (rewrite xs=ysr (cons-balanced bs_ys idp)) idp
+    | suc i => run {
+      rewrite xs=ysr,
+      \case (ins_rcons i ys Right (Left :: Right :: nil)) \with {
+        | Either.inl a => run { rewrite a, cons-balanced (Balanced_ins bs_ys) idp }
+        | Either.inr b => run {
+          rewrite b,
+          append-balanced {_} {Left :: (ys ++ Right :: nil)} {Left :: Right :: nil}
+              (cons-balanced bs_ys idp)
+              BalancedLR
+              idp
+        }
+      }
+    }
+  }
+  | xs, append-balanced {ys} {zs} bs1 bs2 p => run {
+    rewrite p,
+    \case (ins++ i ys zs (Left :: Right :: nil)) \with {
+      | Either.inl a => run { rewrite a, append-balanced (Balanced_ins bs1) bs2 idp }
+      | Either.inr (j, b) => run { rewrite b, append-balanced bs1 (Balanced_ins bs2) idp }
+  } }
+
+\func Balanced_insert {xs ys : List Paren} (bl : Balanced (xs ++ ys)) :
+  Balanced (xs ++ Left :: Right :: ys) => run {
+  rewriteI (ins_lenght_++ xs ys (Left :: Right :: nil)),
+  Balanced_ins bl
+}
+
+\func repeat {A : \Type} (n : Nat) (x : A) : List A \elim n
+  | 0 => nil
+  | suc n => repeat n x ++ x :: nil
+
+\func isBalanced-correct2 {xs : List Paren} {n : Nat} (b_xs : isBalanced.cnt n xs = just 0) :
+  Balanced ((repeat n Left) ++ xs) \elim xs
+  | nil => run {
+    rewrite cnt-n-nil at b_xs,
+    pmap (maybe 0 (\lam x => x)) at b_xs,
+    rewrite b_xs,
+    nil-balanced
+  }
+  | :: Right xs =>  cases (n, b_xs) \with {
+    | suc n, b_xs => run {
+      Balanced_insert o isBalanced-correct2 at b_xs,
+      rewrite ++-assoc b_xs
+    }
+  }
+  | :: Left xs => run {
+    rewrite cnt-n-Left::xs at b_xs,
+    isBalanced-correct2 at b_xs,
+    rewrite ++-assoc at b_xs,
+    b_xs
+  }
+
 \func isBalanced-correct (xs : List Paren) : (isBalanced xs = true) <-> Balanced xs
-  => {?}
+  => (run {
+    unfold isBalanced,
+    cases (isBalanced.cnt 0 xs arg addPath) \with {
+      | nothing, p => \case __
+      | just 0, p => \lam _ => isBalanced-correct2 p
+      | just (suc n), p => \case __
+    }
+  }, \lam bs => unfold isBalanced (rewrite (isBalanced-correct1 xs bs 0) idp))
