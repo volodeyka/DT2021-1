@@ -94,6 +94,21 @@
     Insertion.sort-perm.insert-comm _ _ _
   }
 
+\func perm-sym {A : \Type} {xs ys : List A} (p : Perm xs ys) : Perm ys xs \elim xs, ys, p
+  | nil, nil, perm-nil => perm-nil
+  | :: x xs, :: y ys, perm-cons p p1 => perm-cons (inv p) (perm-sym p1)
+  | xs, ys, perm-trans p1 p2 => perm-trans (perm-sym p2) (perm-sym p1)
+  | :: x (:: x' xs), :: y (:: y' ys), perm-swap p p1 p2 => rewrite (p,p1,p2) (perm-swap idp idp idp)
+
+\func sort-eq<->perm {A : Dec} {l l' : List A} : (Insertion.sort l = Insertion.sort l') <-> Perm l l' =>
+  (run {
+    \lam eq =>,
+    perm-trans (Insertion.sort-perm _),
+    perm-sym,
+    rewrite eq,
+    Insertion.sort-perm _
+   }, perm-sort-eq)
+
 \lemma sort-of-sorted {A : Dec} {l : List A} (s : Sorted l) : Insertion.sort l = l \elim l, s
   | nil, sorted-nil => idp
   | :: x l, sorted-cons p s => run {
