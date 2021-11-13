@@ -16,9 +16,12 @@
 
 -- 1. Закончите определение \instance Monad для Term.
 
-\func termMap-o {A B C : \Set} {f : A -> B} {g : B -> C} {m : Term A} :
-  termMap g (termMap f m) = termMap (\lam x => g (f x)) m => {?}
-
+\func termMap-o {A B C : \Set} {f : A -> B} {g : B -> C} (m : Term A) :
+  termMap g (termMap f m) = termMap (\lam x => g (f x)) m \elim m
+  | var v => idp
+  | unit => idp
+  | app m1 m2 => (rewrite (termMap-o m1, termMap-o m2)) idp
+  | lam m => pmap lam (termMap-o m *> (cong (ext (\lam x => cases x idp))))
 
 \func termMap>>= {A B C : \Set} (f : A -> B) (m : Term A) {g : B -> Term C} :
   termMap f m  TermMonad.>>= g = m  TermMonad.>>= g o f \elim m
