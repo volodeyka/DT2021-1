@@ -87,7 +87,7 @@
 \func isCogenerator (C : \Type) => \Pi {A B : \Set} (f g : A -> B) (p : \Pi (h : B -> C) -> h `o` f = h `o` g) -> f = g
 
 \func PropIsCogenerator : isCogenerator \Prop =>
-  \lam f _ p => ext (\lam a => rewriteI (pmap (\lam f => f a) (p (\lam b => f a = b))) idp)
+  \lam f _ p => ext (\lam a => rewriteI (pmap (__ a) (p (f a = __))) idp)
 
 -- 6b. Тип X называется инъективным, если для любой функции f : A -> X и любой инъекции i : A -> B сущесвует функция l : B -> X такая, что l `o` i = f.
 --     Докажите, что \Prop инъективен.
