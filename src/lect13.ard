@@ -69,7 +69,7 @@
 -- Чтобы доказать, что listSetToSet является биекцией, достаточно показать, что она инъекция и сюръекция.
 -- Инъективность легко доказывается:
 \lemma listSetToSet-inj {S : SetSpec} (xs ys : ListSet S.A) (p : listSetToSet xs = {S} listSetToSet ys) : xs = ys \elim xs, ys
-  | in~ xs, in~ ys => quotientEq xs ys (\lam x =>
+  | in~ xs, in~ ys =>  xs ys (\lam x =>
       (\lam q => listToSet-lem2 (rewriteF p (listToSet-lem1 q)),
        \lam q => listToSet-lem2 (rewrite p (listToSet-lem1 q))))
 

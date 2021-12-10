@@ -1,37 +1,220 @@
-\import Utils
+\import Data.Array (filter)
+\import Data.Bool (Bool, true, false, and)
+\import Function
+\import Function.Meta ($)
+\import Logic (inP, truncP)
+\import Logic.Meta
+\import Meta
+\import Paths (inv)
+\import Paths.Meta
+\import Set
+\import Utils \hiding (Bool, true, false)
 \import lect12
 \import lect13
 
 -- 1. Докажите, что add x (add x s) = add x s и add x (add y s) = add y (add x s)
 
 \func add-idemp {S : SetSpec} (x : S.A) (s : S) : add x (add x s) = add x s
-  => {?}
+  => setExt _ _ (\lam _ =>
+      (\case addProp __ \with {
+        | byLeft p => rewrite p addHead
+        | byRight p => p
+      },
+       \case addProp __ \with {
+         | byLeft p => rewrite p addHead
+         | byRight p => addTail (addTail p)
+       }))
 
 \func add-swap {S : SetSpec} (x y : S.A) (s : S) : add x (add y s) = add y (add x s)
-  => {?}
+  => setExt _ _ (\lam _ =>
+      (\case addProp __ \with {
+        | byLeft p => rewrite p (addTail addHead)
+        | byRight p => \case addProp p \with {
+          | byLeft a => rewrite a addHead
+          | byRight b => addTail (addTail b)
+        }
+      },
+       \case addProp __ \with {
+         | byLeft p => rewrite p (addTail addHead)
+         | byRight p => \case addProp p \with {
+           | byLeft a => rewrite a addHead
+           | byRight b => addTail (addTail b)
+         }
+       }))
 
 -- 2. Докажите, что множество подмножеств является инстансом SetSpec
 
 \func subsets {A : \Set} : SetSpec {A} (A -> \Prop)
-  => {?}
+  => \new SetSpec {
+    | emptySet => \lam _ => Empty
+    | add => \lam a s b => Or (a = b) (s b)
+    | isElem => \lam a => __ a
+    | setExt => \lam s s' es => ext (\lam a => ext (es _))
+    | emptySetProp => \lam x => id
+    | addHead => byLeft idp
+    | addTail => byRight __
+    | addProp => \case __ \with {
+      | byLeft p => rewrite p (byLeft idp)
+      | byRight b => byRight b
+    }
+  }
 
 -- 3. Докажите, что множество подмножеств является наибольшим инстансом, то есть любой другой вкладывается в него.
 
 \func subsets-largest (S : SetSpec) : \Sigma (f : S -> (S.A -> \Prop)) (isInj f)
-  => {?}
+  =>
+    (`isElem` __,
+     \lam _ _ p => setExt _ _ (\lam x1 => (rewriteI (pmap (__ x1) p) __, rewrite (pmap (__ x1) p) __)))
 
 -- 4. Определите функцию isEmpty для произвольного конечного множества и для ListSet.
 
-\func isEmptySet {S : FinSetSpec} (x : S) : Bool => {?}
+\func toListSet {S : FinSetSpec} (x : S) : ListSet S.A =>
+  rewrite listSet=Set x
 
-\func isEmptyListSet {A : \Set} (x : ListSet A) : Bool => {?}
+\func isEmptySet {S : FinSetSpec} (x : S) : Bool =>
+  \case (toListSet x) \with {
+    | in~ a => \case a \with {
+      | nil => true
+      | :: a1 l => false
+    }
+    | ~-quot {a} {b} r i =>
+      (cases (a, b, r) \with {
+        | nil, nil, r1 => idp
+        | nil, :: a1 b1, r1 => \case (r1 a1).2 (here idp)
+        | :: a1 a2, nil, r1 => \case (r1 a1).1 (here idp)
+        | :: a1 a2, :: a3 b1, r1 => idp
+      }) @ i
+  }
+
+\func isEmptyListSet {A : \Set} (x : ListSet A) : Bool => isEmptySet x
 
 -- 5. Определите функцию union {A : \Set} : S A -> S A -> S A для произвольного S A (удовлетворяющего FinSetSpec) и для ListSet.
 
+\func app-lem {A : \Type} {x : List A} {xs ys : List A} {y : A} (p : y `In` xs -> y `In` ys) (y-in-xs : y `In` (x ++ xs)) : y `In` (x ++ ys)
+  \elim x
+    | nil => p y-in-xs
+    | :: a x => ListSetSet.cons-lem a (x ++ xs) _ y (app-lem p) y-in-xs
+
+\func union-with-list {S : FinSetSpec} (x : List S.A) (y : S) : S \elim x
+  | nil => y
+  | :: a x => add a (union-with-list x y) \where {
+  \lemma lem' {S : FinSetSpec} {x : List S.A} (y : S) (a : S.A) :
+    a `isElem` union-with-list x y <-> a `In` x `Or` a `isElem` y \elim x
+    | nil => (byRight __, \case __ \with {
+      | byLeft ()
+      | byRight b => b
+    })
+    | :: a1 x => (\case addProp {S} __ \with {
+      | byLeft a2 => byLeft (here a2)
+      | byRight b => \case (lem' {S} {x} y a).1 b \with {
+        | byLeft a2 => byLeft (there a2)
+        | byRight b1 => byRight b1
+      }
+    }, \case __ \with {
+      | byLeft (here p) => rewrite p addHead
+      | byLeft (there p) => addTail ((lem' {S} {x} y a).2 (byLeft p))
+      | byRight p => addTail ((lem' {S} {x} y a).2 (byRight p))
+    })
+  \lemma lem {A : \Set} {x x' : List A} (eq : EqList x x') (y : ListSet A) :
+    union-with-list x y = union-with-list x' y => setExt _ _ (\lam x1 =>
+      (\lam i => run {
+        (lem' _ _).1 at i,
+        (lem' _ _).2,
+        \case i \with {
+          | byLeft a => byLeft ((eq x1).1 a)
+          | byRight b => byRight b
+        }
+      },\lam i => run {
+        (lem' _ _).1 at i,
+        (lem' _ _).2,
+        \case i \with {
+          | byLeft a => byLeft ((eq x1).2 a)
+          | byRight b => byRight b
+        }
+      }))
+}
+
+
+\func unionListSet {A : \Set} (x :  ListSet A) (y :  ListSet A) : ListSet A \elim x
+  | in~ a => union-with-list a y
+  | ~-quot {a} {b} r i => (union-with-list.lem r y) @ i
+
+\func union {A : \Set} (S : FinSetSpec) (x : S) (y : S) : S =>
+  listSetToSet {S} (unionListSet (toListSet x) (toListSet y))
+
 -- 6. Определите функцию intersection {A : DecSet} : S A -> S A -> S A для произвольного S A (удовлетворяющего FinSetSpec) и для ListSet.
+
+\func if {A : \Type} (b : Bool) (t e : A) : A \elim b
+  | true => t
+  | false => e
+
+\func in  {A : DecSet} (x : A.E) (xs : List A) : Bool \elim xs
+  | nil => false
+  | :: a xs => if (x == a) true (x `in` xs)
+
+\func in-In  {A : DecSet} {x : A.E} {xs : List A} : x `in` xs = true -> x `In` xs \elim xs
+  | nil => \case __
+  | :: a xs =>  unfold (==) $ cases (A.decideEq x a) \with {
+    | yes q => \lam p1 => here q
+    | no q => \lam p1 => there (in-In p1)
+  }
+
+\func In-in {A : DecSet} {x : A.E} {xs : List A} : x `In` xs -> x `in` xs = true \elim xs
+  | nil => \case __
+  | :: a xs => \case __ \with {
+    | here p => unfold (==) $ cases (A.decideEq x a) idp \with {
+      | no e => contradiction
+    }
+    | there i => unfold (==) $ cases (A.decideEq x a) idp \with {
+      | no e => In-in i
+    }
+  }
+
+\func \infixl 2 & {A : DecSet} (x y : List A) : List A \elim x
+  | nil => nil
+  | :: a x => if (a `in` y) (a ::) id $ x & y \where {
+  \lemma in-& {A : DecSet} {x y : List A} (a : A.E) :
+    a `In` (x & y) <-> (\Sigma (a `In` x) (a `In` y)) \elim x
+    | nil => (\case __ \with {}, \case __.1)
+    | :: b x =>
+      (cases (in b y arg addPath) \with {
+        | false, p => \lam i => (there ((in-& _).1 i).1, ((in-& _).1 i).2)
+        | true,  p => \case __ \with {
+          | here p1 => (here p1, in-In (rewrite p1 p))
+          | there i => (there ((in-& _).1 i).1, ((in-& _).1 i).2)
+        }
+      },
+      \lam i => \case i.1 \with {
+        | here p => cases (in b y arg addPath) \with {
+          | false, p1 => run {
+            rewriteI p at p1,
+            rewrite (In-in i.2) at p1,
+            \case p1
+          }
+          | true, p1 => here p
+        }
+        | there j => cases (in b y arg addPath) \with {
+          | false, p => (in-& a).2 (j, i.2)
+          | true, p => there ((in-& a).2 (j, i.2))
+        }
+      })
+    \lemma lem1 {A : DecSet} {x y : List A} (z : List A) (eq : EqList x y) :
+      EqList (z & x) (z & y) =>
+        \lam x1 => (\lam i => (in-& _).2 (((in-& _).1 i).1, (eq x1).1 ((in-& _).1 i).2), \lam i => (in-& _).2 (((in-& _).1 i).1, (eq x1).2 ((in-& _).1 i).2))
+    \lemma lem2 {A : DecSet} {x y : List A} (z : List A) (eq : EqList x y) :
+      EqList (x & z) (y & z) =>
+        \lam x1 => (\lam i => (in-& _).2 ((eq x1).1 ((in-& _).1 i).1, ((in-& _).1 i).2), \lam i => (in-& _).2 ((eq x1).2 ((in-& _).1 i).1, ((in-& _).1 i).2))
+}
+
+\func interListSet {A : \Set} (d : DecSet A) (x :  ListSet A) (y :  ListSet A) : ListSet A \elim x, y
+  | in~ a, in~ b => in~ (a & b)
+  | in~ a, ~-quot {x} {y} r i => (quotientEq _ _ (&.lem1 a r)) @ i
+  | ~-quot {x} {y} r i, in~ a => (quotientEq _ _ (&.lem2 a r)) @ i
 
 -- 7. Мы не можем определить функция size в общем случае, но мы можем определить предикат S -> Nat -> \Prop, соответствующий \lam xs n => size xs <= n.
 --    Задайте этот предикат и докажите, что он эквивалентен обычному определению, если A -- разрешимо и S -- конечно.
+
+\func size {S : FinSetSpec} (x : S) (n : Nat) : \Prop => ∃ (l : List S.A) (length l = n) (listSetToSet (in~ l) = x)
 
 -- Optional
 -- 8. Определите предикат isFin : \Type -> \Prop так, чтобы множество \Sigma (P : A -> \Prop) (isFin (\Sigma (a : A) (P A))) удовлетворяло FinSetSpec, определите этот инстанс.
